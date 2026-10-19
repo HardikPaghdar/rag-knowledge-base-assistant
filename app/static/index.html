@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Knowledge Assistant</title>
+  <style>
+    :root{color-scheme:light;--ink:#17211c;--muted:#5d6b63;--green:#16834a;--line:#dce6df;--bg:#f5f8f5}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}
+    main{max-width:980px;margin:0 auto;padding:32px 18px 64px}.hero{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;margin-bottom:18px}
+    .eyebrow{color:var(--green);font-weight:750;font-size:12px;letter-spacing:.12em;text-transform:uppercase}h1{font-size:clamp(28px,4vw,42px);line-height:1.1;margin:10px 0}p{color:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    section{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;min-width:0}h2{font-size:20px;margin-top:0}label{font-weight:650;display:block;margin:12px 0 6px}
+    input,textarea,button{font:inherit}input[type=file],textarea{width:100%;border:1px solid #cbd7ce;border-radius:10px;padding:11px;background:white}textarea{min-height:100px;resize:vertical}
+    button{border:0;border-radius:10px;background:var(--green);color:white;padding:11px 16px;font-weight:700;cursor:pointer;margin-top:12px}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #a5e6bc;outline-offset:2px}
+    .status{font-size:14px;white-space:pre-wrap;margin-top:12px;color:var(--muted)}.answer{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7faf7;border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:14px}
+    .sources{margin-top:12px;display:grid;gap:10px}.source{border-left:3px solid var(--green);padding:8px 12px;background:#f7faf7;overflow-wrap:anywhere}.source small{color:var(--muted)}.docs{padding-left:20px;color:var(--muted)}
+    @media(max-width:720px){.grid{grid-template-columns:1fr}main{padding:18px 12px 40px}.hero,section{padding:18px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="eyebrow">Local-first AI demo · No API key</div>
+    <h1>Knowledge Base Assistant</h1>
+    <p>Upload a document, ask a question, and inspect the exact passages used to ground the response. This demo uses transparent lexical retrieval; it does not call a paid LLM.</p>
+    <div id="health" class="status" aria-live="polite">Checking knowledge base…</div>
+  </header>
+  <div class="grid">
+    <section>
+      <h2>1. Add knowledge</h2>
+      <p>Supported formats: PDF, Markdown, and plain text. Files stay in memory and are cleared when the server restarts.</p>
+      <form id="upload-form">
+        <label for="file">Choose a document</label>
+        <input id="file" name="file" type="file" accept=".pdf,.md,.txt" required>
+        <button type="submit">Upload and index</button>
+      </form>
+      <div id="upload-status" class="status" role="status"></div>
+      <h2 style="margin-top:26px">Indexed documents</h2>
+      <ul id="documents" class="docs"><li>Loading…</li></ul>
+    </section>
+    <section>
+      <h2>2. Ask a question</h2>
+      <form id="query-form">
+        <label for="question">Question</label>
+        <textarea id="question" minlength="3" maxlength="1000" required placeholder="What should I check before restarting a machine?"></textarea>
+        <label for="top-k">Source passages</label>
+        <select id="top-k" style="width:100%;padding:10px;border-radius:10px;border:1px solid #cbd7ce">
+          <option value="1">1 passage</option><option value="3" selected>3 passages</option><option value="5">5 passages</option>
+        </select>
+        <button type="submit">Search knowledge base</button>
+      </form>
+      <div id="query-status" class="status" role="status"></div>
+      <div id="answer" class="answer" hidden></div>
+      <div id="sources" class="sources"></div>
+    </section>
+  </div>
+</main>
+<script>
+const byId = id => document.getElementById(id);
+async function refreshDocs(){
+  try{
+    const response=await fetch('/documents'); const data=await response.json();
+    byId('documents').innerHTML='';
+    if(!data.documents.length){byId('documents').innerHTML='<li>No documents indexed yet.</li>';return}
+    data.documents.forEach(doc=>{const li=document.createElement('li');li.textContent=doc.source+' ('+doc.chunks+' chunks)';byId('documents').appendChild(li)});
+    const health=await fetch('/health').then(r=>r.json());
+    byId('health').textContent=health.documents+' documents · '+health.chunks+' chunks indexed';
+  }catch(e){byId('health').textContent='Could not reach API: '+e.message}
+}
+byId('upload-form').addEventListener('submit',async event=>{
+  event.preventDefault();byId('upload-status').textContent='Uploading…';
+  try{
+    const form=new FormData();form.append('file',byId('file').files[0]);
+    const response=await fetch('/documents',{method:'POST',body:form});const data=await response.json();
+    if(!response.ok)throw new Error(data.detail||'Upload failed');
+    byId('upload-status').textContent=data.message+' '+data.chunks+' chunks created.';
+    byId('file').value='';await refreshDocs();
+  }catch(e){byId('upload-status').textContent='Error: '+e.message}
+});
+byId('query-form').addEventListener('submit',async event=>{
+  event.preventDefault();byId('query-status').textContent='Searching…';byId('answer').hidden=true;byId('sources').innerHTML='';
+  try{
+    const response=await fetch('/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:byId('question').value,top_k:Number(byId('top-k').value)})});
+    const data=await response.json();if(!response.ok)throw new Error(data.detail||'Query failed');
+    byId('answer').textContent=data.answer;byId('answer').hidden=false;
+    data.sources.forEach(source=>{
+      const card=document.createElement('article');card.className='source';
+      const title=document.createElement('strong');title.textContent=source.source+' · chunk '+source.chunk;
+      const score=document.createElement('small');score.textContent=' · relevance '+source.score;
+      const body=document.createElement('p');body.textContent=source.text;
+      card.append(title,score,body);byId('sources').appendChild(card);
+    });
+    byId('query-status').textContent=data.sources.length?'Showing '+data.sources.length+' cited passages.':'No matching source found.';
+  }catch(e){byId('query-status').textContent='Error: '+e.message}
+});
+refreshDocs();
+</script>
+</body>
+</html>
