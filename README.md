@@ -128,3 +128,10 @@ Then open [http://localhost:8000](http://localhost:8000).
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Explore more
+
+- [Advanced Hybrid RAG with Reranking](https://github.com/HardikPaghdar/advanced-hybrid-rag-reranking) — hybrid retrieval and ranking signals.
+- [Production RAG Pipeline](https://github.com/HardikPaghdar/production-rag-pipeline) — retrieval, citations, and evaluation.
+- [AI Document Intelligence & Extraction](https://github.com/HardikPaghdar/ai-document-intelligence-extraction) — structured document fields.
+- [More projects on my portfolio](https://hardikpaghdar.netlify.app/).
